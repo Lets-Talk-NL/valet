@@ -605,8 +605,8 @@ class Site
         $confPath = $this->certificatesPath($url, 'conf');
 
         if ($this->letstalkKeyFile() && $this->letstalkCrtFile()) {
-            symlink($keyPath, $this->letstalkKeyFile());
-            symlink($crtPath, $this->letstalkKeyFile());
+            symlink($this->letstalkKeyFile(), $keyPath);
+            symlink($this->letstalkKeyFile(), $crtPath);
             return;
         }
 
