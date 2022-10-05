@@ -17,7 +17,7 @@ fi
 # Valet CLI script which is written in PHP. Will use PHP to do it.
 if [ ! -f "$DIR/cli/valet.php" ]
 then
-    DIR=$(php -r "echo realpath('$DIR/../laravel/valet');")
+    DIR=$(php -r "echo realpath('$DIR/../letstalk/valet');")
 fi
 
 # If the command is the "share" command we will need to resolve out any

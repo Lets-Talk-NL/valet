@@ -535,7 +535,9 @@ class Site
 
         $caExpireInDate = (new \DateTime())->diff(new \DateTime("+{$caExpireInYears} years"));
 
-        $this->createCa($caExpireInDate->format('%a'));
+        if (!$this->letstalkKeyFile() || !$this->letstalkCrtFile()) {
+            $this->createCa($caExpireInDate->format('%a'));
+        }
         $this->createCertificate($url, $certificateExpireInDays);
 
         $siteConf = $this->buildSecureNginxServer($url, $siteConf);
@@ -601,6 +603,12 @@ class Site
         $csrPath = $this->certificatesPath($url, 'csr');
         $crtPath = $this->certificatesPath($url, 'crt');
         $confPath = $this->certificatesPath($url, 'conf');
+
+        if ($this->letstalkKeyFile() && $this->letstalkCrtFile()) {
+            symlink($keyPath, $this->letstalkKeyFile());
+            symlink($crtPath, $this->letstalkKeyFile());
+            return;
+        }
 
         $this->buildCertificateConf($confPath, $url);
         $this->createPrivateKey($keyPath);
@@ -1165,5 +1173,17 @@ class Site
                 return PhpFpm::normalizePhpVersion(trim($this->files->get($path)));
             }
         }
+    }
+
+    protected function letstalkKeyFile()
+    {
+        $path = getenv('HOME') . '/.config/lt-ssl.key';
+        return file_exists($path) ? $path : null;
+    }
+
+    protected function letstalkCrtFile()
+    {
+        $path = getenv('HOME') . '/.config/lt-ssl.crt';
+        return file_exists($path) ? $path : null;
     }
 }
