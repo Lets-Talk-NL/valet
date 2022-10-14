@@ -71,6 +71,7 @@ abstract class ValetDriver
         $drivers[] = 'NeosValetDriver';
         $drivers[] = 'Magento2ValetDriver';
         $drivers[] = 'Shopware5ValetDriver';
+        $drivers[] = 'Shopware6ValetDriver';
 
         $drivers[] = 'BasicValetDriver';
 
