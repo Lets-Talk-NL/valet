@@ -467,7 +467,7 @@ class Site
 
         $caExpireInDate = (new \DateTime())->diff(new \DateTime("+{$caExpireInYears} years"));
 
-        if (!$this->letstalkKeyFile() || !$this->letstalkCrtFile()) {
+        if (! $this->letstalkKeyFile() || ! $this->letstalkCrtFile()) {
             $this->createCa($caExpireInDate->format('%a'));
         }
         $this->createCertificate($url, $certificateExpireInDays);
@@ -557,6 +557,7 @@ class Site
         if ($this->letstalkKeyFile() && $this->letstalkCrtFile()) {
             symlink($this->letstalkCrtFile(), $crtPath);
             symlink($this->letstalkKeyFile(), $keyPath);
+
             return;
         }
 
@@ -1100,13 +1101,15 @@ class Site
 
     protected function letstalkKeyFile()
     {
-        $path = getenv('HOME') . '/.config/lt-ssl.key';
+        $path = getenv('HOME').'/.config/lt-ssl.key';
+
         return file_exists($path) ? $path : null;
     }
 
     protected function letstalkCrtFile()
     {
-        $path = getenv('HOME') . '/.config/lt-ssl.crt';
+        $path = getenv('HOME').'/.config/lt-ssl.crt';
+
         return file_exists($path) ? $path : null;
     }
 }
