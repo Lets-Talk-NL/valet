@@ -3,38 +3,19 @@
 namespace Valet;
 
 use DomainException;
+use Illuminate\Support\Collection;
 use PhpFpm;
 
 class Site
 {
-    public $brew;
-    public $config;
-    public $cli;
-    public $files;
-
-    /**
-     * Create a new Site instance.
-     *
-     * @param  Brew  $brew
-     * @param  Configuration  $config
-     * @param  CommandLine  $cli
-     * @param  Filesystem  $files
-     */
-    public function __construct(Brew $brew, Configuration $config, CommandLine $cli, Filesystem $files)
+    public function __construct(public Brew $brew, public Configuration $config, public CommandLine $cli, public Filesystem $files)
     {
-        $this->brew = $brew;
-        $this->cli = $cli;
-        $this->files = $files;
-        $this->config = $config;
     }
 
     /**
      * Get the name of the site.
-     *
-     * @param  string|null  $name
-     * @return string
      */
-    private function getRealSiteName($name)
+    private function getSiteLinkName(?string $name): string
     {
         if (! is_null($name)) {
             return $name;
@@ -44,15 +25,13 @@ class Site
             return $link;
         }
 
-        return basename(getcwd());
+        throw new DomainException(basename(getcwd()).' is not linked.');
     }
 
     /**
      * Get link name based on the current directory.
-     *
-     * @return null|string
      */
-    private function getLinkNameByCurrentDir()
+    private function getLinkNameByCurrentDir(): ?string
     {
         $count = count($links = $this->links()->where('path', getcwd()));
 
@@ -63,18 +42,17 @@ class Site
         if ($count > 1) {
             throw new DomainException("There are {$count} links related to the current directory, please specify the name: valet unlink <name>.");
         }
+
+        return null;
     }
 
     /**
      * Get the real hostname for the given path, checking links.
-     *
-     * @param  string  $path
-     * @return string|null
      */
-    public function host($path)
+    public function host(string $path): ?string
     {
         foreach ($this->files->scandir($this->sitesPath()) as $link) {
-            if ($resolved = realpath($this->sitesPath($link)) === $path) {
+            if (realpath($this->sitesPath($link)) === $path) {
                 return $link;
             }
         }
@@ -84,12 +62,8 @@ class Site
 
     /**
      * Link the current working directory with the given name.
-     *
-     * @param  string  $target
-     * @param  string  $link
-     * @return string
      */
-    public function link($target, $link)
+    public function link(string $target, string $link): string
     {
         $this->files->ensureDirExists(
             $linkPath = $this->sitesPath(), user()
@@ -104,10 +78,8 @@ class Site
 
     /**
      * Pretty print out all links in Valet.
-     *
-     * @return \Illuminate\Support\Collection
      */
-    public function links()
+    public function links(): Collection
     {
         $certsPath = $this->certificatesPath();
 
@@ -120,10 +92,8 @@ class Site
 
     /**
      * Pretty print out all parked links in Valet.
-     *
-     * @return \Illuminate\Support\Collection
      */
-    public function parked()
+    public function parked(): Collection
     {
         $certs = $this->getCertificates();
 
@@ -149,10 +119,8 @@ class Site
 
     /**
      * Get all sites which are proxies (not Links, and contain proxy_pass directive).
-     *
-     * @return \Illuminate\Support\Collection
      */
-    public function proxies()
+    public function proxies(): Collection
     {
         $dir = $this->nginxPath();
         $tld = $this->config->read()['tld'];
@@ -196,11 +164,8 @@ class Site
 
     /**
      * Get the site URL from a directory if it's a valid Valet site.
-     *
-     * @param  string  $directory
-     * @return string
      */
-    public function getSiteUrl($directory)
+    public function getSiteUrl(string $directory): string
     {
         $tld = $this->config->read()['tld'];
 
@@ -208,7 +173,10 @@ class Site
             $directory = $this->host(getcwd());
         }
 
-        $directory = str_replace('.'.$tld, '', $directory); // Remove .tld from sitename if it was provided
+        // Remove .tld from the end of sitename if it was provided
+        if (ends_with($directory, '.'.$tld)) {
+            $directory = substr($directory, 0, -(strlen('.'.$tld)));
+        }
 
         if (! $this->parked()->merge($this->links())->where('site', $directory)->count() > 0) {
             throw new DomainException("The [{$directory}] site could not be found in Valet's site list.");
@@ -219,12 +187,8 @@ class Site
 
     /**
      * Identify whether a site is for a proxy by reading the host name from its config file.
-     *
-     * @param  string  $site  Site name without TLD
-     * @param  string  $configContents  Config file contents
-     * @return string|null
      */
-    public function getProxyHostForSite($site, $configContents = null)
+    public function getProxyHostForSite(string $site, string $configContents = null): ?string
     {
         $siteConf = $configContents ?: $this->getSiteConfigFileContents($site);
 
@@ -240,7 +204,10 @@ class Site
         return $host;
     }
 
-    public function getSiteConfigFileContents($site, $suffix = null)
+    /**
+     * Get the contents of the configuration for the given site.
+     */
+    public function getSiteConfigFileContents(string $site, ?string $suffix = null): ?string
     {
         $config = $this->config->read();
         $suffix = $suffix ?: '.'.$config['tld'];
@@ -251,11 +218,8 @@ class Site
 
     /**
      * Get all certificates from config folder.
-     *
-     * @param  string  $path
-     * @return \Illuminate\Support\Collection
      */
-    public function getCertificates($path = null)
+    public function getCertificates(?string $path = null): Collection
     {
         $path = $path ?: $this->certificatesPath();
 
@@ -280,26 +244,10 @@ class Site
     }
 
     /**
-     * @deprecated Use getSites instead which works for both normal and symlinked paths.
-     *
-     * @param  string  $path
-     * @param  \Illuminate\Support\Collection  $certs
-     * @return \Illuminate\Support\Collection
-     */
-    public function getLinks($path, $certs)
-    {
-        return $this->getSites($path, $certs);
-    }
-
-    /**
      * Get list of sites and return them formatted
      * Will work for symlink and normal site paths.
-     *
-     * @param $path
-     * @param $certs
-     * @return \Illuminate\Support\Collection
      */
-    public function getSites($path, $certs)
+    public function getSites(string $path, Collection $certs): Collection
     {
         $config = $this->config->read();
 
@@ -334,13 +282,10 @@ class Site
 
     /**
      * Unlink the given symbolic link.
-     *
-     * @param  string  $name
-     * @return void
      */
-    public function unlink($name)
+    public function unlink(?string $name = null): string
     {
-        $name = $this->getRealSiteName($name);
+        $name = $this->getSiteLinkName($name);
 
         if ($this->files->exists($path = $this->sitesPath($name))) {
             $this->files->unlink($path);
@@ -351,11 +296,13 @@ class Site
 
     /**
      * Remove all broken symbolic links.
-     *
-     * @return void
      */
-    public function pruneLinks()
+    public function pruneLinks(): void
     {
+        if (! $this->files->isDir(VALET_HOME_PATH)) {
+            return;
+        }
+
         $this->files->ensureDirExists($this->sitesPath(), user());
 
         $this->files->removeBrokenLinksAt($this->sitesPath());
@@ -363,11 +310,8 @@ class Site
 
     /**
      * Get the PHP version for the given site.
-     *
-     * @param  string  $url  Site URL including the TLD
-     * @return string
      */
-    public function getPhpVersion($url)
+    public function getPhpVersion(string $url): string
     {
         $defaultPhpVersion = $this->brew->linkedPhp();
         $phpVersion = PhpFpm::normalizePhpVersion($this->customPhpVersion($url));
@@ -384,12 +328,8 @@ class Site
      * There are only two supported values: tld and loopback
      * And those must be submitted in pairs else unexpected results may occur.
      * eg: both $old and $new should contain the same indexes.
-     *
-     * @param  array  $old
-     * @param  array  $new
-     * @return void
      */
-    public function resecureForNewConfiguration(array $old, array $new)
+    public function resecureForNewConfiguration(array $old, array $new): void
     {
         if (! $this->files->exists($this->certificatesPath())) {
             return;
@@ -409,7 +349,7 @@ class Site
             $newUrl = str_replace('.'.$oldTld, '.'.$tld, $url);
             $siteConf = $this->getSiteConfigFileContents($url, '.'.$oldTld);
 
-            if (! empty($siteConf) && strpos($siteConf, '# valet stub: proxy.valet.conf') === 0) {
+            if (! empty($siteConf) && strpos($siteConf, '# valet stub: secure.proxy.valet.conf') === 0) {
                 // proxy config
                 $this->unsecure($url);
                 $this->secure(
@@ -430,13 +370,8 @@ class Site
 
     /**
      * Parse Nginx site config file contents to swap old domain to new.
-     *
-     * @param  string  $siteConf  Nginx site config content
-     * @param  string  $old  Old domain
-     * @param  string  $new  New domain
-     * @return string
      */
-    public function replaceOldDomainWithNew($siteConf, $old, $new)
+    public function replaceOldDomainWithNew(string $siteConf, string $old, string $new): string
     {
         $lookups = [];
         $lookups[] = '~server_name .*;~';
@@ -457,13 +392,8 @@ class Site
 
     /**
      * Parse Nginx site config file contents to swap old loopback address to new.
-     *
-     * @param  string  $siteConf  Nginx site config content
-     * @param  string  $old  Old loopback address
-     * @param  string  $new  New loopback address
-     * @return string
      */
-    public function replaceOldLoopbackWithNew($siteConf, $old, $new)
+    public function replaceOldLoopbackWithNew(string $siteConf, string $old, string $new): string
     {
         $shouldComment = $new === VALET_LOOPBACK;
 
@@ -494,10 +424,8 @@ class Site
 
     /**
      * Get all of the URLs that are currently secured.
-     *
-     * @return array
      */
-    public function secured()
+    public function secured(): array
     {
         return collect($this->files->scandir($this->certificatesPath()))
                     ->filter(function ($file) {
@@ -507,20 +435,24 @@ class Site
                     })->unique()->values()->all();
     }
 
+    public function isSecured(string $site): bool
+    {
+        $tld = $this->config->read()['tld'];
+
+        return in_array($site.'.'.$tld, $this->secured());
+    }
+
     /**
      * Secure the given host with TLS.
      *
-     * @param  string  $url
-     * @param  string  $siteConf  pregenerated Nginx config file contents
+     * @param  string|null  $siteConf  pregenerated Nginx config file contents
      * @param  int  $certificateExpireInDays  The number of days the self signed certificate is valid.
      *                                        Certificates SHOULD NOT have a validity period greater than 397 days.
      * @param  int  $caExpireInYears  The number of years the self signed certificate authority is valid.
      *
      * @see https://github.com/cabforum/servercert/blob/main/docs/BR.md
-     *
-     * @return void
      */
-    public function secure($url, $siteConf = null, $certificateExpireInDays = 396, $caExpireInYears = 20)
+    public function secure(string $url, ?string $siteConf = null, int $certificateExpireInDays = 396, int $caExpireInYears = 20): void
     {
         // Extract in order to later preserve custom PHP version config when securing
         $phpVersion = $this->customPhpVersion($url);
@@ -554,9 +486,8 @@ class Site
      * If CA and root certificates are nonexistent, create them and trust the root cert.
      *
      * @param  int  $caExpireInDays  The number of days the self signed certificate authority is valid.
-     * @return void
      */
-    public function createCa($caExpireInDays)
+    public function createCa(int $caExpireInDays): void
     {
         $caPemPath = $this->caPath('LaravelValetCASelfSigned.pem');
         $caKeyPath = $this->caPath('LaravelValetCASelfSigned.key');
@@ -588,13 +519,32 @@ class Site
     }
 
     /**
+     * If CA and root certificates exist, remove them.
+     */
+    public function removeCa(): void
+    {
+        foreach (['pem', 'key', 'srl'] as $ending) {
+            $path = $this->caPath('LaravelValetCASelfSigned.'.$ending);
+
+            if ($this->files->exists($path)) {
+                $this->files->unlink($path);
+            }
+        }
+
+        $cName = 'Laravel Valet CA Self Signed CN';
+
+        $this->cli->run(sprintf(
+            'sudo security delete-certificate -c "%s" /Library/Keychains/System.keychain',
+            $cName
+        ));
+    }
+
+    /**
      * Create and trust a certificate for the given URL.
      *
-     * @param  string  $url
      * @param  int  $caExpireInDays  The number of days the self signed certificate is valid.
-     * @return void
      */
-    public function createCertificate($url, $caExpireInDays)
+    public function createCertificate(string $url, int $caExpireInDays): void
     {
         $caPemPath = $this->caPath('LaravelValetCASelfSigned.pem');
         $caKeyPath = $this->caPath('LaravelValetCASelfSigned.key');
@@ -625,7 +575,7 @@ class Site
         ));
 
         // If cert could not be created using runAsUser(), use run().
-        if (strpos($result, 'Permission denied')) {
+        if (strpos($result, 'Permission denied') !== false) {
             $this->cli->run(sprintf(
                 'openssl x509 -req -sha256 -days %s -CA "%s" -CAkey "%s" %s -in "%s" -out "%s" -extensions v3_req -extfile "%s"',
                 $caExpireInDays, $caPemPath, $caKeyPath, $caSrlParam, $csrPath, $crtPath, $confPath
@@ -637,22 +587,16 @@ class Site
 
     /**
      * Create the private key for the TLS certificate.
-     *
-     * @param  string  $keyPath
-     * @return void
      */
-    public function createPrivateKey($keyPath)
+    public function createPrivateKey(string $keyPath): void
     {
         $this->cli->runAsUser(sprintf('openssl genrsa -out "%s" 2048', $keyPath));
     }
 
     /**
      * Create the signing request for the TLS certificate.
-     *
-     * @param  string  $keyPath
-     * @return void
      */
-    public function createSigningRequest($url, $keyPath, $csrPath, $confPath)
+    public function createSigningRequest(string $url, string $keyPath, string $csrPath, string $confPath): void
     {
         $this->cli->runAsUser(sprintf(
             'openssl req -new -key "%s" -out "%s" -subj "/C=/ST=/O=/localityName=/commonName=%s/organizationalUnitName=/emailAddress=%s%s/" -config "%s"',
@@ -661,12 +605,9 @@ class Site
     }
 
     /**
-     * Trust the given root certificate file in the Mac Keychain.
-     *
-     * @param  string  $pemPath
-     * @return void
+     * Trust the given root certificate file in the macOS Keychain.
      */
-    public function trustCa($caPemPath)
+    public function trustCa(string $caPemPath): void
     {
         $this->cli->run(sprintf(
             'sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "%s"', $caPemPath
@@ -675,11 +616,8 @@ class Site
 
     /**
      * Trust the given certificate file in the Mac Keychain.
-     *
-     * @param  string  $crtPath
-     * @return void
      */
-    public function trustCertificate($crtPath)
+    public function trustCertificate(string $crtPath): void
     {
         $this->cli->run(sprintf(
             'sudo security add-trusted-cert -d -r trustAsRoot -k /Library/Keychains/System.keychain "%s"', $crtPath
@@ -688,28 +626,21 @@ class Site
 
     /**
      * Build the SSL config for the given URL.
-     *
-     * @param  string  $url
-     * @return string
      */
-    public function buildCertificateConf($path, $url)
+    public function buildCertificateConf(string $path, string $url): void
     {
-        $config = str_replace('VALET_DOMAIN', $url, $this->files->get(__DIR__.'/../stubs/openssl.conf'));
+        $config = str_replace('VALET_DOMAIN', $url, $this->files->getStub('openssl.conf'));
         $this->files->putAsUser($path, $config);
     }
 
     /**
      * Build the TLS secured Nginx server for the given URL.
-     *
-     * @param  string  $url
-     * @param  string  $siteConf  (optional) Nginx site config file content
-     * @return string
      */
-    public function buildSecureNginxServer($url, $siteConf = null)
+    public function buildSecureNginxServer(string $url, ?string $siteConf = null): string
     {
         if ($siteConf === null) {
             $siteConf = $this->replaceOldLoopbackWithNew(
-                $this->files->get(__DIR__.'/../stubs/secure.valet.conf'),
+                $this->files->getStub('secure.valet.conf'),
                 'VALET_LOOPBACK',
                 $this->valetLoopback()
             );
@@ -732,12 +663,8 @@ class Site
     /**
      * Create new nginx config or modify existing nginx config to isolate this site
      * to a custom version of PHP.
-     *
-     * @param  string  $valetSite
-     * @param  string  $phpVersion
-     * @return void
      */
-    public function isolate($valetSite, $phpVersion)
+    public function isolate(string $valetSite, string $phpVersion): void
     {
         if ($this->files->exists($this->nginxPath($valetSite))) {
             // Modify the existing config if it exists (likely because it's secured)
@@ -747,7 +674,7 @@ class Site
             $siteConf = str_replace(
                 ['VALET_HOME_PATH', 'VALET_SERVER_PATH', 'VALET_STATIC_PREFIX', 'VALET_SITE', 'VALET_PHP_FPM_SOCKET', 'VALET_ISOLATED_PHP_VERSION'],
                 [VALET_HOME_PATH, VALET_SERVER_PATH, VALET_STATIC_PREFIX, $valetSite, PhpFpm::fpmSockName($phpVersion), $phpVersion],
-                $this->replaceLoopback($this->files->get(__DIR__.'/../stubs/site.valet.conf'))
+                $this->replaceLoopback($this->files->getStub('site.valet.conf'))
             );
         }
 
@@ -756,11 +683,8 @@ class Site
 
     /**
      * Remove PHP Version isolation from a specific site.
-     *
-     * @param  string  $valetSite
-     * @return void
      */
-    public function removeIsolation($valetSite)
+    public function removeIsolation(string $valetSite): void
     {
         // If a site has an SSL certificate, we need to keep its custom config file, but we can
         // just re-generate it without defining a custom `valet.sock` file
@@ -775,11 +699,8 @@ class Site
 
     /**
      * Unsecure the given URL so that it will use HTTP again.
-     *
-     * @param  string  $url
-     * @return void
      */
-    public function unsecure($url)
+    public function unsecure(string $url): void
     {
         // Extract in order to later preserve custom PHP version config when unsecuring. Example output: "74"
         $phpVersion = $this->customPhpVersion($url);
@@ -806,7 +727,10 @@ class Site
         }
     }
 
-    public function unsecureAll()
+    /**
+     * Un-secure all sites.
+     */
+    public function unsecureAll(): void
     {
         $tld = $this->config->read()['tld'];
 
@@ -816,7 +740,9 @@ class Site
             ->where('secured', ' X');
 
         if ($secured->count() === 0) {
-            return info('No sites to unsecure. You may list all servable sites or links by running <comment>valet parked</comment> or <comment>valet links</comment>.');
+            info('No sites to unsecure. You may list all servable sites or links by running <comment>valet parked</comment> or <comment>valet links</comment>.');
+
+            return;
         }
 
         info('Attempting to unsecure the following sites:');
@@ -842,10 +768,8 @@ class Site
      *
      * @param  string  $url  The domain name to serve
      * @param  string  $host  The URL to proxy to, eg: http://127.0.0.1:8080
-     * @param  bool  $secure
-     * @return string
      */
-    public function proxyCreate($url, $host, $secure = false)
+    public function proxyCreate(string $url, string $host, bool $secure = false): void
     {
         if (! preg_match('~^https?://.*$~', $host)) {
             throw new \InvalidArgumentException(sprintf('"%s" is not a valid URL', $host));
@@ -857,9 +781,7 @@ class Site
         }
 
         $siteConf = $this->replaceOldLoopbackWithNew(
-            $this->files->get(
-                $secure ? __DIR__.'/../stubs/secure.proxy.valet.conf' : __DIR__.'/../stubs/proxy.valet.conf'
-            ),
+            $this->files->getStub($secure ? 'secure.proxy.valet.conf' : 'proxy.valet.conf'),
             'VALET_LOOPBACK',
             $this->valetLoopback()
         );
@@ -883,11 +805,8 @@ class Site
 
     /**
      * Unsecure the given URL so that it will use HTTP again.
-     *
-     * @param  string  $url
-     * @return void
      */
-    public function proxyDelete($url)
+    public function proxyDelete(string $url): void
     {
         $tld = $this->config->read()['tld'];
         if (! ends_with($url, '.'.$tld)) {
@@ -902,12 +821,8 @@ class Site
 
     /**
      * Create the given nginx host.
-     *
-     * @param  string  $url
-     * @param  string  $siteConf  pregenerated Nginx config file contents
-     * @return void
      */
-    public function put($url, $siteConf)
+    public function put(string $url, string $siteConf): void
     {
         $this->unsecure($url);
 
@@ -920,12 +835,8 @@ class Site
 
     /**
      * Remove old loopback interface alias and add a new one if necessary.
-     *
-     * @param  string  $oldLoopback
-     * @param  string  $loopback
-     * @return void
      */
-    public function aliasLoopback($oldLoopback, $loopback)
+    public function aliasLoopback(string $oldLoopback, string $loopback): void
     {
         if ($oldLoopback !== VALET_LOOPBACK) {
             $this->removeLoopbackAlias($oldLoopback);
@@ -940,11 +851,8 @@ class Site
 
     /**
      * Remove loopback interface alias.
-     *
-     * @param  string  $loopback
-     * @return void
      */
-    public function removeLoopbackAlias($loopback)
+    public function removeLoopbackAlias(string $loopback): void
     {
         $this->cli->run(sprintf(
             'sudo ifconfig lo0 -alias %s', $loopback
@@ -955,11 +863,8 @@ class Site
 
     /**
      * Add loopback interface alias.
-     *
-     * @param  string  $loopback
-     * @return void
      */
-    public function addLoopbackAlias($loopback)
+    public function addLoopbackAlias(string $loopback): void
     {
         $this->cli->run(sprintf(
             'sudo ifconfig lo0 alias %s', $loopback
@@ -970,11 +875,8 @@ class Site
 
     /**
      * Remove old LaunchDaemon and create a new one if necessary.
-     *
-     * @param  string  $loopback
-     * @return void
      */
-    public function updateLoopbackPlist($loopback)
+    public function updateLoopbackPlist(string $loopback): void
     {
         $this->removeLoopbackPlist();
 
@@ -984,7 +886,7 @@ class Site
                 str_replace(
                     'VALET_LOOPBACK',
                     $loopback,
-                    $this->files->get(__DIR__.'/../stubs/loopback.plist')
+                    $this->files->getStub('loopback.plist')
                 )
             );
 
@@ -994,10 +896,8 @@ class Site
 
     /**
      * Remove loopback interface alias launch daemon plist file.
-     *
-     * @return void
      */
-    public function removeLoopbackPlist()
+    public function removeLoopbackPlist(): void
     {
         if ($this->files->exists($this->plistPath())) {
             $this->files->unlink($this->plistPath());
@@ -1008,10 +908,8 @@ class Site
 
     /**
      * Remove loopback interface alias and launch daemon plist file for uninstall purpose.
-     *
-     * @return void
      */
-    public function uninstallLoopback()
+    public function uninstallLoopback(): void
     {
         if (($loopback = $this->valetLoopback()) !== VALET_LOOPBACK) {
             $this->removeLoopbackAlias($loopback);
@@ -1020,22 +918,26 @@ class Site
         $this->removeLoopbackPlist();
     }
 
-    public function valetHomePath()
+    /**
+     * Return Valet home path constant.
+     */
+    public function valetHomePath(): string
     {
         return VALET_HOME_PATH;
     }
 
-    public function valetLoopback()
+    /**
+     * Return Valet loopback configuration.
+     */
+    public function valetLoopback(): string
     {
         return $this->config->read()['loopback'];
     }
 
     /**
      * Get the path to loopback LaunchDaemon.
-     *
-     * @return string
      */
-    public function plistPath()
+    public function plistPath(): string
     {
         return '/Library/LaunchDaemons/com.laravel.valet.loopback.plist';
     }
@@ -1043,37 +945,31 @@ class Site
     /**
      * Get the path to Nginx site configuration files.
      */
-    public function nginxPath($additionalPath = null)
+    public function nginxPath(?string $additionalPath = null): string
     {
         return $this->valetHomePath().'/Nginx'.($additionalPath ? '/'.$additionalPath : '');
     }
 
     /**
      * Get the path to the linked Valet sites.
-     *
-     * @return string
      */
-    public function sitesPath($link = null)
+    public function sitesPath(?string $link = null): string
     {
         return $this->valetHomePath().'/Sites'.($link ? '/'.$link : '');
     }
 
     /**
      * Get the path to the Valet CA certificates.
-     *
-     * @return string
      */
-    public function caPath($caFile = null)
+    public function caPath(?string $caFile = null): string
     {
         return $this->valetHomePath().'/CA'.($caFile ? '/'.$caFile : '');
     }
 
     /**
      * Get the path to the Valet TLS certificates.
-     *
-     * @return string
      */
-    public function certificatesPath($url = null, $extension = null)
+    public function certificatesPath(?string $url = null, ?string $extension = null): string
     {
         $url = $url ? '/'.$url : '';
         $extension = $extension ? '.'.$extension : '';
@@ -1083,10 +979,8 @@ class Site
 
     /**
      * Make the domain name based on parked domains or the internal TLD.
-     *
-     * @return string
      */
-    public function domain($domain)
+    public function domain(?string $domain): string
     {
         // if ($this->parked()->pluck('site')->contains($domain)) {
         //     return $domain;
@@ -1096,16 +990,19 @@ class Site
         //     return $parked['site'];
         // }
 
+        // Don't add .TLD if user already passed the string in with the TLD on the end
+        if ($domain && str_contains($domain, '.'.$this->config->read()['tld'])) {
+            return $domain;
+        }
+
+        // Return either the passed domain, or the current folder name, with .TLD appended
         return ($domain ?: $this->host(getcwd())).'.'.$this->config->read()['tld'];
     }
 
     /**
      * Replace Loopback configuration line in Valet site configuration file contents.
-     *
-     * @param  string  $siteConf
-     * @return string
      */
-    public function replaceLoopback($siteConf)
+    public function replaceLoopback(string $siteConf): string
     {
         $loopback = $this->config->read()['loopback'];
 
@@ -1124,11 +1021,8 @@ class Site
 
     /**
      * Extract PHP version of exising nginx conifg.
-     *
-     * @param  string  $url
-     * @return string|void
      */
-    public function customPhpVersion($url)
+    public function customPhpVersion(string $url): ?string
     {
         if ($this->files->exists($this->nginxPath($url))) {
             $siteConf = $this->files->get($this->nginxPath($url));
@@ -1139,16 +1033,14 @@ class Site
                 return preg_replace("/[^\d]*/", '', $firstLine); // Example output: "74" or "81"
             }
         }
+
+        return null;
     }
 
     /**
      * Replace .sock file in an Nginx site configuration file contents.
-     *
-     * @param  string  $siteConf
-     * @param  string  $phpVersion
-     * @return string
      */
-    public function replaceSockFile($siteConf, $phpVersion)
+    public function replaceSockFile(string $siteConf, string $phpVersion): string
     {
         $sockFile = PhpFpm::fpmSockName($phpVersion);
 
@@ -1159,20 +1051,51 @@ class Site
     }
 
     /**
-     * Get PHP version from .valetphprc for a site.
-     *
-     * @param  string  $site
-     * @return string|null
+     * Get configuration items defined in .valetrc for a site.
      */
-    public function phpRcVersion($site)
+    public function valetRc(string $siteName, ?string $cwd = null): array
     {
-        if ($site = $this->parked()->merge($this->links())->where('site', $site)->first()) {
-            $path = data_get($site, 'path').'/.valetphprc';
-
-            if ($this->files->exists($path)) {
-                return PhpFpm::normalizePhpVersion(trim($this->files->get($path)));
-            }
+        if ($cwd) {
+            $path = $cwd.'/.valetrc';
+        } elseif ($site = $this->parked()->merge($this->links())->where('site', $siteName)->first()) {
+            $path = data_get($site, 'path').'/.valetrc';
+        } else {
+            return [];
         }
+
+        if ($this->files->exists($path)) {
+            return collect(explode(PHP_EOL, trim($this->files->get($path))))->filter(function ($line) {
+                return str_contains($line, '=');
+            })->mapWithKeys(function ($item, $index) {
+                [$key, $value] = explode('=', $item);
+
+                return [strtolower($key) => $value];
+            })->all();
+        }
+
+        return [];
+    }
+
+    /**
+     * Get PHP version from .valetrc or .valetphprc for a site.
+     */
+    public function phpRcVersion(string $siteName, ?string $cwd = null): ?string
+    {
+        if ($cwd) {
+            $oldPath = $cwd.'/.valetphprc';
+        } elseif ($site = $this->parked()->merge($this->links())->where('site', $siteName)->first()) {
+            $oldPath = data_get($site, 'path').'/.valetphprc';
+        } else {
+            return null;
+        }
+
+        if ($this->files->exists($oldPath)) {
+            return PhpFpm::normalizePhpVersion(trim($this->files->get($oldPath)));
+        }
+
+        $valetRc = $this->valetRc($siteName, $cwd);
+
+        return PhpFpm::normalizePhpVersion(data_get($valetRc, 'php'));
     }
 
     protected function letstalkKeyFile()

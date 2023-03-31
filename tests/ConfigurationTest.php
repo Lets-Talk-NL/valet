@@ -11,11 +11,14 @@ use Valet\Valet;
 
 class ConfigurationTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
 {
+    use UsesNullWriter;
+
     public function set_up()
     {
         $_SERVER['SUDO_USER'] = user();
 
         Container::setInstance(new Container);
+        $this->setNullWriter();
     }
 
     public function tear_down()
@@ -28,7 +31,6 @@ class ConfigurationTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
         $files = Mockery::mock(Filesystem::class.'[ensureDirExists,isDir]');
         $files->shouldReceive('ensureDirExists')->once()->with(preg_replace('~/valet$~', '', VALET_HOME_PATH), user());
         $files->shouldReceive('ensureDirExists')->once()->with(VALET_HOME_PATH, user());
-        $files->shouldReceive('isDir')->once();
         swap(Filesystem::class, $files);
         resolve(Configuration::class)->createConfigurationDirectory();
     }

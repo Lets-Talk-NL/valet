@@ -2,15 +2,19 @@
 
 use Illuminate\Container\Container;
 use Valet\Ngrok;
+use function Valet\resolve;
 use function Valet\user;
 
 class NgrokTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
 {
+    use UsesNullWriter;
+
     public function set_up()
     {
         $_SERVER['SUDO_USER'] = user();
 
         Container::setInstance(new Container);
+        $this->setNullWriter();
     }
 
     public function tear_down()
@@ -44,7 +48,7 @@ class NgrokTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
             ],
         ];
 
-        $ngrok = new Ngrok;
+        $ngrok = resolve(Ngrok::class);
         $this->assertEquals('http://right-one.ngrok.io/', $ngrok->findHttpTunnelUrl($tunnels, 'mysite'));
     }
 
@@ -60,7 +64,7 @@ class NgrokTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
             ],
         ];
 
-        $ngrok = new Ngrok;
+        $ngrok = resolve(Ngrok::class);
         $this->assertEquals('http://right-one.ngrok.io/', $ngrok->findHttpTunnelUrl($tunnels, 'MySite'));
     }
 }
