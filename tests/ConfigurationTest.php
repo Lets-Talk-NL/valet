@@ -4,10 +4,11 @@ use Illuminate\Container\Container;
 use Valet\Brew;
 use Valet\Configuration;
 use Valet\Filesystem;
+use Valet\Valet;
+
 use function Valet\resolve;
 use function Valet\swap;
 use function Valet\user;
-use Valet\Valet;
 
 class ConfigurationTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
 {
@@ -131,5 +132,15 @@ class ConfigurationTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
         swap(Filesystem::class, $files);
         resolve(Brew::class)->createSudoersEntry();
         resolve(Valet::class)->createSudoersEntry();
+    }
+
+    public function test_ensure_configuration_exists_writes_tld_and_loopback_if_empty()
+    {
+        $config = Mockery::mock(Configuration::class.'[writeBaseConfiguration,read,updateKey]', [new Filesystem]);
+        $config->shouldReceive('writeBaseConfiguration')->once();
+        $config->shouldReceive('read')->times(2)->andReturn([]);
+        $config->shouldReceive('updateKey')->with('tld', 'test');
+        $config->shouldReceive('updateKey')->with('loopback', '127.0.0.1');
+        $config->ensureBaseConfiguration();
     }
 }

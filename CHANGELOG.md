@@ -1,6 +1,55 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/valet/compare/v4.0.1...master)
+## [Unreleased](https://github.com/laravel/valet/compare/v4.5.0...master)
+
+## [v4.5.0](https://github.com/laravel/valet/compare/v4.4.1...v4.5.0) - 2023-10-10
+
+- Add support for proxying multiple domains at once by [@RobertBoes](https://github.com/RobertBoes) in https://github.com/laravel/valet/pull/1437
+
+## [v4.4.1](https://github.com/laravel/valet/compare/v4.4.0...v4.4.1) - 2023-10-03
+
+- Fix magento2 driver by [@mischabraam](https://github.com/mischabraam) in https://github.com/laravel/valet/pull/1420
+
+## [v4.4.0](https://github.com/laravel/valet/compare/v4.3.0...v4.4.0) - 2023-09-26
+
+- Allow LaravelValetDriver to serve other /public/*.php files by [@drbyte](https://github.com/drbyte) in https://github.com/laravel/valet/pull/1439
+- Support static caching in Statamic by [@jasonvarga](https://github.com/jasonvarga) in https://github.com/laravel/valet/pull/1440
+- Fix link command's `--isolate` argument with custom name by [@mcaskill](https://github.com/mcaskill) in https://github.com/laravel/valet/pull/1428
+
+## [v4.3.0](https://github.com/laravel/valet/compare/v4.1.4...v4.3.0) - 2023-09-05
+
+- Add "valet stop dnsmasq" option by [@drbyte](https://github.com/drbyte) in https://github.com/laravel/valet/pull/1422
+- Drop Mailhog and Redis from default logs list, since Valet doesn't install them by [@mattstauffer](https://github.com/mattstauffer) in https://github.com/laravel/valet/pull/1438
+
+## [v4.1.4](https://github.com/laravel/valet/compare/v4.1.3...v4.1.4) - 2023-08-14
+
+### What's Changed
+
+- Only delete DNSMasq resolver when Herd is not installed by [@mpociot](https://github.com/mpociot) in https://github.com/laravel/valet/pull/1434
+
+**Full Changelog**: https://github.com/laravel/valet/compare/v4.1.3...v4.1.4
+
+## [v4.1.3](https://github.com/laravel/valet/compare/v4.1.2...v4.1.3) - 2023-07-21
+
+- Add quotes around $PHP by [@datashaman](https://github.com/datashaman) in https://github.com/laravel/valet/pull/1431
+
+## [v4.1.2](https://github.com/laravel/valet/compare/v4.1.1...v4.1.2) - 2023-05-30
+
+- Load specific drivers before custom drivers to allow for extension. by @mattstauffer in https://github.com/laravel/valet/pull/1414
+- Ensure base configuration is correct even if file already exists by @mattstauffer in https://github.com/laravel/valet/pull/1415
+
+## [v4.1.1](https://github.com/laravel/valet/compare/v4.1.0...v4.1.1) - 2023-05-16
+
+- Install older PHP versions via alternate tap by @drbyte in https://github.com/laravel/valet/pull/1411
+
+## [v4.1.0](https://github.com/laravel/valet/compare/v4.0.2...v4.1.0) - 2023-05-09
+
+- Add driver for Radicle by @csorrentino in https://github.com/laravel/valet/pull/1413
+
+## [v4.0.2](https://github.com/laravel/valet/compare/v4.0.1...v4.0.2) - 2023-04-26
+
+- Fix ngrok.io proxy/forwarding detection by @drbyte in https://github.com/laravel/valet/pull/1404
+- Fix read non existing config file by @mischabraam in https://github.com/laravel/valet/pull/1398
 
 ## [v4.0.1](https://github.com/laravel/valet/compare/v4.0.0...v4.0.1) - 2023-03-27
 

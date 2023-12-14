@@ -102,7 +102,7 @@ class PhpFpm
     /**
      * Restart the PHP FPM process (if one specified) or processes (if none specified).
      */
-    public function restart(?string $phpVersion = null): void
+    public function restart(string $phpVersion = null): void
     {
         $this->brew->restartService($phpVersion ?: $this->utilizedPhpVersions());
     }
@@ -112,6 +112,7 @@ class PhpFpm
      */
     public function stop(): void
     {
+        info('Stopping phpfpm...');
         call_user_func_array(
             [$this->brew, 'stopService'],
             Brew::SUPPORTED_PHP_VERSIONS
@@ -121,7 +122,7 @@ class PhpFpm
     /**
      * Get the path to the FPM configuration file for the current PHP version.
      */
-    public function fpmConfigPath(?string $phpVersion = null): string
+    public function fpmConfigPath(string $phpVersion = null): string
     {
         if (! $phpVersion) {
             $phpVersion = $this->brew->linkedPhp();
@@ -138,6 +139,7 @@ class PhpFpm
      */
     public function stopRunning(): void
     {
+        info('Stopping phpfpm...');
         $this->brew->stopService(
             $this->brew->getAllRunningServices()
                 ->filter(function ($service) {
@@ -150,7 +152,7 @@ class PhpFpm
     /**
      * Stop a given PHP version, if that specific version isn't being used globally or by any sites.
      */
-    public function stopIfUnused(?string $phpVersion = null): void
+    public function stopIfUnused(string $phpVersion = null): void
     {
         if (! $phpVersion) {
             return;
@@ -222,7 +224,7 @@ class PhpFpm
         $version = $this->validateRequestedVersion($version);
 
         try {
-            if ($this->brew->linkedPhp() === $version && ! $force) {
+            if ($version === $this->brew->linkedPhp() && ! $force) {
                 output(sprintf('<info>Valet is already using version: <comment>%s</comment>.</info> To re-link and re-configure use the --force parameter.'.PHP_EOL,
                     $version));
                 exit();
@@ -303,7 +305,7 @@ class PhpFpm
     /**
      * Get FPM sock file name for a given PHP version.
      */
-    public static function fpmSockName(?string $phpVersion = null): string
+    public static function fpmSockName(string $phpVersion = null): string
     {
         $versionInteger = preg_replace('~[^\d]~', '', $phpVersion);
 

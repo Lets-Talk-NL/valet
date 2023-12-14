@@ -52,7 +52,7 @@ class Site
     public function host(string $path): ?string
     {
         foreach ($this->files->scandir($this->sitesPath()) as $link) {
-            if (realpath($this->sitesPath($link)) === $path) {
+            if ($path === realpath($this->sitesPath($link))) {
                 return $link;
             }
         }
@@ -132,32 +132,32 @@ class Site
         }
 
         $proxies = collect($this->files->scandir($dir))
-        ->filter(function ($site, $key) use ($tld) {
-            // keep sites that match our TLD
-            return ends_with($site, '.'.$tld);
-        })->map(function ($site, $key) use ($tld) {
-            // remove the TLD suffix for consistency
-            return str_replace('.'.$tld, '', $site);
-        })->reject(function ($site, $key) use ($links) {
-            return $links->has($site);
-        })->mapWithKeys(function ($site) {
-            $host = $this->getProxyHostForSite($site) ?: '(other)';
+            ->filter(function ($site, $key) use ($tld) {
+                // keep sites that match our TLD
+                return ends_with($site, '.'.$tld);
+            })->map(function ($site, $key) use ($tld) {
+                // remove the TLD suffix for consistency
+                return str_replace('.'.$tld, '', $site);
+            })->reject(function ($site, $key) use ($links) {
+                return $links->has($site);
+            })->mapWithKeys(function ($site) {
+                $host = $this->getProxyHostForSite($site) ?: '(other)';
 
-            return [$site => $host];
-        })->reject(function ($host, $site) {
-            // If proxy host is null, it may be just a normal SSL stub, or something else; either way we exclude it from the list
-            return $host === '(other)';
-        })->map(function ($host, $site) use ($certs, $tld) {
-            $secured = $certs->has($site);
-            $url = ($secured ? 'https' : 'http').'://'.$site.'.'.$tld;
+                return [$site => $host];
+            })->reject(function ($host, $site) {
+                // If proxy host is null, it may be just a normal SSL stub, or something else; either way we exclude it from the list
+                return $host === '(other)';
+            })->map(function ($host, $site) use ($certs, $tld) {
+                $secured = $certs->has($site);
+                $url = ($secured ? 'https' : 'http').'://'.$site.'.'.$tld;
 
-            return [
-                'site' => $site,
-                'secured' => $secured ? ' X' : '',
-                'url' => $url,
-                'path' => $host,
-            ];
-        });
+                return [
+                    'site' => $site,
+                    'secured' => $secured ? ' X' : '',
+                    'url' => $url,
+                    'path' => $host,
+                ];
+            });
 
         return $proxies;
     }
@@ -207,7 +207,7 @@ class Site
     /**
      * Get the contents of the configuration for the given site.
      */
-    public function getSiteConfigFileContents(string $site, ?string $suffix = null): ?string
+    public function getSiteConfigFileContents(string $site, string $suffix = null): ?string
     {
         $config = $this->config->read();
         $suffix = $suffix ?: '.'.$config['tld'];
@@ -219,7 +219,7 @@ class Site
     /**
      * Get all certificates from config folder.
      */
-    public function getCertificates(?string $path = null): Collection
+    public function getCertificates(string $path = null): Collection
     {
         $path = $path ?: $this->certificatesPath();
 
@@ -283,7 +283,7 @@ class Site
     /**
      * Unlink the given symbolic link.
      */
-    public function unlink(?string $name = null): string
+    public function unlink(string $name = null): string
     {
         $name = $this->getSiteLinkName($name);
 
@@ -428,11 +428,11 @@ class Site
     public function secured(): array
     {
         return collect($this->files->scandir($this->certificatesPath()))
-                    ->filter(function ($file) {
-                        return ends_with($file, ['.key', '.csr', '.crt', '.conf']);
-                    })->map(function ($file) {
-                        return str_replace(['.key', '.csr', '.crt', '.conf'], '', $file);
-                    })->unique()->values()->all();
+            ->filter(function ($file) {
+                return ends_with($file, ['.key', '.csr', '.crt', '.conf']);
+            })->map(function ($file) {
+                return str_replace(['.key', '.csr', '.crt', '.conf'], '', $file);
+            })->unique()->values()->all();
     }
 
     public function isSecured(string $site): bool
@@ -452,7 +452,7 @@ class Site
      *
      * @see https://github.com/cabforum/servercert/blob/main/docs/BR.md
      */
-    public function secure(string $url, ?string $siteConf = null, int $certificateExpireInDays = 396, int $caExpireInYears = 20): void
+    public function secure(string $url, string $siteConf = null, int $certificateExpireInDays = 396, int $caExpireInYears = 20): void
     {
         // Extract in order to later preserve custom PHP version config when securing
         $phpVersion = $this->customPhpVersion($url);
@@ -637,7 +637,7 @@ class Site
     /**
      * Build the TLS secured Nginx server for the given URL.
      */
-    public function buildSecureNginxServer(string $url, ?string $siteConf = null): string
+    public function buildSecureNginxServer(string $url, string $siteConf = null): string
     {
         if ($siteConf === null) {
             $siteConf = $this->replaceOldLoopbackWithNew(
@@ -777,31 +777,34 @@ class Site
         }
 
         $tld = $this->config->read()['tld'];
-        if (! ends_with($url, '.'.$tld)) {
-            $url .= '.'.$tld;
+
+        foreach (explode(',', $url) as $proxyUrl) {
+            if (! ends_with($proxyUrl, '.'.$tld)) {
+                $proxyUrl .= '.'.$tld;
+            }
+
+            $siteConf = $this->replaceOldLoopbackWithNew(
+                $this->files->getStub($secure ? 'secure.proxy.valet.conf' : 'proxy.valet.conf'),
+                'VALET_LOOPBACK',
+                $this->valetLoopback()
+            );
+
+            $siteConf = str_replace(
+                ['VALET_HOME_PATH', 'VALET_SERVER_PATH', 'VALET_STATIC_PREFIX', 'VALET_SITE', 'VALET_PROXY_HOST'],
+                [$this->valetHomePath(), VALET_SERVER_PATH, VALET_STATIC_PREFIX, $proxyUrl, $host],
+                $siteConf
+            );
+
+            if ($secure) {
+                $this->secure($proxyUrl, $siteConf);
+            } else {
+                $this->put($proxyUrl, $siteConf);
+            }
+
+            $protocol = $secure ? 'https' : 'http';
+
+            info('Valet will now proxy ['.$protocol.'://'.$proxyUrl.'] traffic to ['.$host.'].');
         }
-
-        $siteConf = $this->replaceOldLoopbackWithNew(
-            $this->files->getStub($secure ? 'secure.proxy.valet.conf' : 'proxy.valet.conf'),
-            'VALET_LOOPBACK',
-            $this->valetLoopback()
-        );
-
-        $siteConf = str_replace(
-            ['VALET_HOME_PATH', 'VALET_SERVER_PATH', 'VALET_STATIC_PREFIX', 'VALET_SITE', 'VALET_PROXY_HOST'],
-            [$this->valetHomePath(), VALET_SERVER_PATH, VALET_STATIC_PREFIX, $url, $host],
-            $siteConf
-        );
-
-        if ($secure) {
-            $this->secure($url, $siteConf);
-        } else {
-            $this->put($url, $siteConf);
-        }
-
-        $protocol = $secure ? 'https' : 'http';
-
-        info('Valet will now proxy ['.$protocol.'://'.$url.'] traffic to ['.$host.'].');
     }
 
     /**
@@ -810,14 +813,17 @@ class Site
     public function proxyDelete(string $url): void
     {
         $tld = $this->config->read()['tld'];
-        if (! ends_with($url, '.'.$tld)) {
-            $url .= '.'.$tld;
+
+        foreach (explode(',', $url) as $proxyUrl) {
+            if (! ends_with($proxyUrl, '.'.$tld)) {
+                $proxyUrl .= '.'.$tld;
+            }
+
+            $this->unsecure($proxyUrl);
+            $this->files->unlink($this->nginxPath($proxyUrl));
+
+            info('Valet will no longer proxy [https://'.$proxyUrl.'].');
         }
-
-        $this->unsecure($url);
-        $this->files->unlink($this->nginxPath($url));
-
-        info('Valet will no longer proxy [https://'.$url.'].');
     }
 
     /**
@@ -946,7 +952,7 @@ class Site
     /**
      * Get the path to Nginx site configuration files.
      */
-    public function nginxPath(?string $additionalPath = null): string
+    public function nginxPath(string $additionalPath = null): string
     {
         return $this->valetHomePath().'/Nginx'.($additionalPath ? '/'.$additionalPath : '');
     }
@@ -954,7 +960,7 @@ class Site
     /**
      * Get the path to the linked Valet sites.
      */
-    public function sitesPath(?string $link = null): string
+    public function sitesPath(string $link = null): string
     {
         return $this->valetHomePath().'/Sites'.($link ? '/'.$link : '');
     }
@@ -962,7 +968,7 @@ class Site
     /**
      * Get the path to the Valet CA certificates.
      */
-    public function caPath(?string $caFile = null): string
+    public function caPath(string $caFile = null): string
     {
         return $this->valetHomePath().'/CA'.($caFile ? '/'.$caFile : '');
     }
@@ -970,7 +976,7 @@ class Site
     /**
      * Get the path to the Valet TLS certificates.
      */
-    public function certificatesPath(?string $url = null, ?string $extension = null): string
+    public function certificatesPath(string $url = null, string $extension = null): string
     {
         $url = $url ? '/'.$url : '';
         $extension = $extension ? '.'.$extension : '';
@@ -1054,7 +1060,7 @@ class Site
     /**
      * Get configuration items defined in .valetrc for a site.
      */
-    public function valetRc(string $siteName, ?string $cwd = null): array
+    public function valetRc(string $siteName, string $cwd = null): array
     {
         if ($cwd) {
             $path = $cwd.'/.valetrc';
@@ -1080,7 +1086,7 @@ class Site
     /**
      * Get PHP version from .valetrc or .valetphprc for a site.
      */
-    public function phpRcVersion(string $siteName, ?string $cwd = null): ?string
+    public function phpRcVersion(string $siteName, string $cwd = null): ?string
     {
         if ($cwd) {
             $oldPath = $cwd.'/.valetphprc';

@@ -11,8 +11,10 @@ use Valet\Nginx;
 use Valet\Ngrok;
 use Valet\PhpFpm;
 use Valet\Site as RealSite;
-use function Valet\swap;
 use Valet\Valet;
+
+use function Valet\resolve;
+use function Valet\swap;
 
 /**
  * @requires PHP >= 8.0
@@ -135,13 +137,12 @@ class CliTest extends BaseApplicationTestCase
         $brew->shouldReceive('installed')->twice()->andReturn(true);
 
         $cli = Mockery::mock(CommandLine::class);
-
         $cli->shouldReceive('run')->once()->andReturn(true);
         $cli->shouldReceive('runAsUser')->once()->with('brew services info --all --json')->andReturn('[{"name":"nginx","running":true}]');
         $cli->shouldReceive('run')->once()->with('brew services info --all --json')->andReturn('[{"name":"nginx","running":true},{"name":"dnsmasq","running":true},{"name":"php@8.2","running":true}]');
 
         $files = Mockery::mock(Filesystem::class.'[exists]');
-        $files->shouldReceive('exists')->once()->andReturn(true);
+        $files->shouldReceive('exists')->andReturn(true);
 
         swap(Brew::class, $brew);
         swap(CommandLine::class, $cli);
@@ -168,7 +169,7 @@ class CliTest extends BaseApplicationTestCase
         $cli->shouldReceive('run')->once()->with('brew services info --all --json')->andReturn('[{"name":"nginx","running":true}]');
 
         $files = Mockery::mock(Filesystem::class.'[exists]');
-        $files->shouldReceive('exists')->once()->andReturn(false);
+        $files->shouldReceive('exists')->andReturn(false);
 
         swap(Brew::class, $brew);
         swap(CommandLine::class, $cli);
@@ -252,6 +253,70 @@ class CliTest extends BaseApplicationTestCase
         $tester->assertCommandIsSuccessful();
 
         $this->assertStringContainsString('site has been secured', $tester->getDisplay());
+    }
+
+    public function test_link_command_with_isolate_flag_isolates()
+    {
+        [$app, $tester] = $this->appAndTester();
+
+        $cwd = getcwd();
+        $name = 'tighten';
+        $host = $name.'.test';
+
+        $customPhpVersion = '82';
+        $phpRcVersion = '8.2';
+        $fullPhpVersion = 'php@8.2';
+
+        $brewMock = Mockery::mock(Brew::class);
+        $nginxMock = Mockery::mock(Nginx::class);
+        $siteMock = Mockery::mock(RealSite::class);
+
+        $phpFpmMock = Mockery::mock(PhpFpm::class, [
+            $brewMock,
+            resolve(CommandLine::class),
+            resolve(Filesystem::class),
+            resolve(RealConfiguration::class),
+            $siteMock,
+            $nginxMock,
+        ])->makePartial();
+
+        swap(Brew::class, $brewMock);
+        swap(Nginx::class, $nginxMock);
+        swap(PhpFpm::class, $phpFpmMock);
+        swap(RealSite::class, $siteMock);
+
+        $brewMock->shouldReceive('supportedPhpVersions')->andReturn(collect([
+            'php@8.2',
+            'php@8.1',
+        ]));
+
+        $brewMock->shouldReceive('ensureInstalled')->with($fullPhpVersion, [], $phpFpmMock->taps);
+        $brewMock->shouldReceive('installed')->with($fullPhpVersion);
+        $brewMock->shouldReceive('determineAliasedVersion')->with($fullPhpVersion)->andReturn($fullPhpVersion);
+
+        $siteMock->shouldReceive('link')->with($cwd, $name)->once();
+        $siteMock->shouldReceive('getSiteUrl')->with($name)->andReturn($host);
+        $siteMock->shouldReceive('phpRcVersion')->with($name, $cwd)->andReturn($phpRcVersion);
+        $siteMock->shouldReceive('customPhpVersion')->with($host)->andReturn($customPhpVersion);
+        $siteMock->shouldReceive('isolate')->with($host, $fullPhpVersion);
+
+        $phpFpmMock->shouldReceive('stopIfUnused')->with($customPhpVersion)->once();
+        $phpFpmMock->shouldReceive('createConfigurationFiles')->with($fullPhpVersion)->once();
+        $phpFpmMock->shouldReceive('restart')->with($fullPhpVersion)->once();
+
+        $nginxMock->shouldReceive('restart')->once();
+
+        // These should only run when doing global PHP switches
+        $brewMock->shouldNotReceive('stopService');
+        $brewMock->shouldNotReceive('link');
+        $brewMock->shouldNotReceive('unlink');
+        $phpFpmMock->shouldNotReceive('stopRunning');
+        $phpFpmMock->shouldNotReceive('install');
+
+        $tester->run(['command' => 'link', 'name' => 'tighten', '--isolate' => true]);
+        $tester->assertCommandIsSuccessful();
+
+        $this->assertStringContainsString('is now using '.$fullPhpVersion, $tester->getDisplay());
     }
 
     public function test_links_command()
@@ -394,6 +459,23 @@ class CliTest extends BaseApplicationTestCase
         swap(RealSite::class, $site);
 
         $tester->run(['command' => 'proxy', 'domain' => 'elasticsearch', 'host' => 'http://127.0.0.1:9200']);
+        $tester->assertCommandIsSuccessful();
+    }
+
+    public function test_proxy_command_with_multiple_domains()
+    {
+        [$app, $tester] = $this->appAndTester();
+
+        $site = Mockery::mock(RealSite::class);
+        $site->shouldReceive('proxyCreate')->with('my-app,subdomain.my-app', 'http://127.0.0.1:8000', false)->once();
+
+        $nginx = Mockery::mock(Nginx::class);
+        $nginx->shouldReceive('restart')->once();
+
+        swap(Nginx::class, $nginx);
+        swap(RealSite::class, $site);
+
+        $tester->run(['command' => 'proxy', 'domain' => 'my-app,subdomain.my-app', 'host' => 'http://127.0.0.1:8000']);
         $tester->assertCommandIsSuccessful();
     }
 
@@ -760,7 +842,7 @@ class CliTest extends BaseApplicationTestCase
         $tester->run(['command' => 'stop']);
         $tester->assertCommandIsSuccessful();
 
-        $this->assertStringContainsString('Valet services have been stopped.', $tester->getDisplay());
+        $this->assertStringContainsString('Valet core services have been stopped.', $tester->getDisplay());
     }
 
     public function test_stop_command_stops_nginx()
@@ -791,6 +873,21 @@ class CliTest extends BaseApplicationTestCase
         $tester->assertCommandIsSuccessful();
 
         $this->assertStringContainsString('PHP has been stopped', $tester->getDisplay());
+    }
+
+    public function test_stop_all_command_stops_dnsmasq()
+    {
+        [$app, $tester] = $this->appAndTester();
+
+        $phpfpm = Mockery::mock(DnsMasq::class);
+        $phpfpm->shouldReceive('stop');
+
+        swap(DnsMasq::class, $phpfpm);
+
+        $tester->run(['command' => 'stop', 'service' => 'dnsmasq']);
+        $tester->assertCommandIsSuccessful();
+
+        $this->assertStringContainsString('dnsmasq has been stopped', $tester->getDisplay());
     }
 
     public function test_stop_command_handles_bad_services()

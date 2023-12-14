@@ -7,8 +7,9 @@ use Valet\Configuration;
 use Valet\Filesystem;
 use Valet\Nginx;
 use Valet\PhpFpm;
-use function Valet\resolve;
 use Valet\Site;
+
+use function Valet\resolve;
 use function Valet\swap;
 use function Valet\user;
 
@@ -448,7 +449,7 @@ class PhpFpmTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
 
 class StubForUpdatingFpmConfigFiles extends PhpFpm
 {
-    public function fpmConfigPath(?string $phpVersion = null): string
+    public function fpmConfigPath(string $phpVersion = null): string
     {
         return __DIR__.'/output/fpm.conf';
     }

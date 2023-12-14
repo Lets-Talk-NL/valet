@@ -10,6 +10,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Valet\Drivers\ValetDriver;
+
 use function Valet\info;
 use function Valet\output;
 use function Valet\table;
@@ -32,7 +33,7 @@ if (file_exists(__DIR__.'/../vendor/autoload.php')) {
  */
 Container::setInstance(new Container);
 
-$version = '4.0.1';
+$version = '4.5.0';
 
 $app = new Application('Laravel Valet', $version);
 
@@ -100,9 +101,7 @@ if (is_dir(VALET_HOME_PATH)) {
     /**
      * Upgrade helper: ensure the tld config exists and the loopback config exists.
      */
-    if (empty(Configuration::read()['tld']) || empty(Configuration::read()['loopback'])) {
-        Configuration::writeBaseConfiguration();
-    }
+    Configuration::ensureBaseConfiguration();
 
     /**
      * Get or set the TLD currently being used by Valet.
@@ -118,7 +117,7 @@ if (is_dir(VALET_HOME_PATH)) {
             true
         );
 
-        if (false === $helper->ask($input, $output, $question)) {
+        if ($helper->ask($input, $output, $question) === false) {
             return warning('No new Valet tld was set.');
         }
 
@@ -198,12 +197,12 @@ if (is_dir(VALET_HOME_PATH)) {
         info('A ['.$name.'] symbolic link has been created in ['.$linkPath.'].');
 
         if ($secure) {
-            $this->runCommand('secure');
+            $this->runCommand('secure '.$name);
         }
 
         if ($isolate) {
-            if (Site::phpRcVersion($name)) {
-                $this->runCommand('isolate');
+            if (Site::phpRcVersion($name, getcwd())) {
+                $this->runCommand('isolate --site='.$name);
             } else {
                 warning('Valet could not determine which PHP version to use for this site.');
             }
@@ -410,7 +409,7 @@ if (is_dir(VALET_HOME_PATH)) {
             $helper = $this->getHelperSet()->get('question');
             $question = new ConfirmationQuestion('Would you like to install Expose now? [y/N] ', false);
 
-            if (false === $helper->ask($input, $output, $question)) {
+            if ($helper->ask($input, $output, $question) === false) {
                 info('Proceeding without installing Expose.');
 
                 return;
@@ -426,7 +425,7 @@ if (is_dir(VALET_HOME_PATH)) {
             $helper = $this->getHelperSet()->get('question');
             $question = new ConfirmationQuestion('Would you like to install ngrok via Homebrew now? [y/N] ', false);
 
-            if (false === $helper->ask($input, $output, $question)) {
+            if ($helper->ask($input, $output, $question) === false) {
                 info('Proceeding without installing ngrok.');
 
                 return;
@@ -508,7 +507,13 @@ if (is_dir(VALET_HOME_PATH)) {
                 PhpFpm::stopRunning();
                 Nginx::stop();
 
-                return info('Valet services have been stopped.');
+                return info('Valet core services have been stopped. To also stop dnsmasq, run: valet stop dnsmasq');
+            case 'all':
+                PhpFpm::stopRunning();
+                Nginx::stop();
+                Dnsmasq::stop();
+
+                return info('All Valet services have been stopped.');
             case 'nginx':
                 Nginx::stop();
 
@@ -517,10 +522,14 @@ if (is_dir(VALET_HOME_PATH)) {
                 PhpFpm::stopRunning();
 
                 return info('PHP has been stopped.');
+            case 'dnsmasq':
+                Dnsmasq::stop();
+
+                return info('dnsmasq has been stopped.');
         }
 
         return warning(sprintf('Invalid valet service name [%s]', $service));
-    })->descriptions('Stop the Valet services');
+    })->descriptions('Stop the core Valet services, or all services by specifying "all".');
 
     /**
      * Uninstall Valet entirely. Requires --force to actually remove; otherwise manual instructions are displayed.
@@ -531,7 +540,7 @@ if (is_dir(VALET_HOME_PATH)) {
             $helper = $this->getHelperSet()->get('question');
             $question = new ConfirmationQuestion('Are you sure you want to proceed? [y/N]', false);
 
-            if (false === $helper->ask($input, $output, $question)) {
+            if ($helper->ask($input, $output, $question) === false) {
                 return warning('Uninstall aborted.');
             }
 
@@ -719,8 +728,6 @@ if (is_dir(VALET_HOME_PATH)) {
         $defaultLogs = [
             'php-fpm' => BREW_PREFIX.'/var/log/php-fpm.log',
             'nginx' => VALET_HOME_PATH.'/Log/nginx-error.log',
-            'mailhog' => BREW_PREFIX.'/var/log/mailhog.log',
-            'redis' => BREW_PREFIX.'/var/log/redis.log',
         ];
 
         $configLogs = data_get(Configuration::read(), 'logs');

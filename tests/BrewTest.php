@@ -5,6 +5,7 @@ use Illuminate\Support\Collection;
 use Valet\Brew;
 use Valet\CommandLine;
 use Valet\Filesystem;
+
 use function Valet\resolve;
 use function Valet\swap;
 use function Valet\user;
@@ -35,13 +36,13 @@ class BrewTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
     {
         $cli = Mockery::mock(CommandLine::class);
         $cli->shouldReceive('runAsUser')->once()->with('brew info php@8.2 --json=v2')
-        ->andReturn('{"formulae":[{"name":"php@8.2","full_name":"php@8.2","aliases":[],"versioned_formulae":[],"versions":{"stable":"8.2.5"},"installed":[{"version":"8.2.5"}]}]}');
+            ->andReturn('{"formulae":[{"name":"php@8.2","full_name":"php@8.2","aliases":[],"versioned_formulae":[],"versions":{"stable":"8.2.5"},"installed":[{"version":"8.2.5"}]}]}');
         swap(CommandLine::class, $cli);
         $this->assertTrue(resolve(Brew::class)->installed('php@8.2'));
 
         $cli = Mockery::mock(CommandLine::class);
         $cli->shouldReceive('runAsUser')->once()->with('brew info php --json=v2')
-        ->andReturn('{"formulae":[{"name":"php","full_name":"php","aliases":["php@8.0"],"versioned_formulae":[],"versions":{"stable":"8.0.0"},"installed":[{"version":"8.0.0"}]}]}');
+            ->andReturn('{"formulae":[{"name":"php","full_name":"php","aliases":["php@8.0"],"versioned_formulae":[],"versions":{"stable":"8.0.0"},"installed":[{"version":"8.0.0"}]}]}');
         swap(CommandLine::class, $cli);
         $this->assertTrue(resolve(Brew::class)->installed('php'));
     }
@@ -201,6 +202,22 @@ class BrewTest extends Yoast\PHPUnitPolyfills\TestCases\TestCase
         $files->shouldReceive('readLink')->once()->with(BREW_PREFIX.'/bin/php')->andReturn('/test/path/php/5.4.14/test');
         swap(Filesystem::class, $files);
         resolve(Brew::class)->linkedPhp();
+    }
+
+    public function test_outdated_php_versions_use_the_alternate_tap()
+    {
+        $brewMock = Mockery::mock(Brew::class, [
+            $cli = Mockery::mock(CommandLine::class),
+            Mockery::mock(Filesystem::class),
+        ])->makePartial();
+
+        $brewMock->shouldReceive('limitedPhpVersions')->andReturn(collect([
+            'php@7.0',
+        ]));
+
+        $cli->shouldReceive('runAsUser')->once()->with(Brew::BREW_DISABLE_AUTO_CLEANUP.' brew install shivammathur/php/php@7.0', Mockery::type('Closure'));
+
+        $brewMock->installOrFail('php@7.0');
     }
 
     public function test_install_or_fail_will_install_brew_formulae()

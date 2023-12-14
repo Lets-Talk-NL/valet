@@ -33,6 +33,9 @@ abstract class ValetDriver
     {
         $drivers = [];
 
+        // Must scan these so they're extensible by customSiteDrivers loaded next
+        $specificDrivers = static::specificDrivers();
+
         // Queue custom driver based on path
         if ($customSiteDriver = static::customSiteDriver($sitePath)) {
             $drivers[] = $customSiteDriver;
@@ -42,8 +45,9 @@ abstract class ValetDriver
         $drivers = array_merge($drivers, static::customDrivers());
 
         // Queue Valet-shipped drivers
+        $drivers[] = 'Specific\StatamicValetDriver';
         $drivers[] = 'LaravelValetDriver';
-        $drivers = array_merge($drivers, static::specificDrivers());
+        $drivers = array_unique(array_merge($drivers, $specificDrivers));
         $drivers[] = 'BasicWithPublicValetDriver';
         $drivers[] = 'BasicValetDriver';
 
